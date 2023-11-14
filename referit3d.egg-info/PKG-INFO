@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: referit3d
+Version: 0.1
+Summary: Comprehension of localizing 3D objects in scenes.
+Home-page: http://github.com/referit3d/referit3d
+Author: referit3d_team
+Author-email: optas@cs.stanford.edu
+License: MIT

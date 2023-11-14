@@ -1,0 +1,10 @@
+# ninja log v5
+0	18970	1698073981675908375	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-cpython-39/_ext_src/src/ball_query_gpu.o	d7f14966ebc8e3fb
+3	19005	1698073981715908452	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-cpython-39/_ext_src/src/interpolate_gpu.o	f1fe91652b1dd092
+2	19215	1698073981927908858	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-cpython-39/_ext_src/src/group_points_gpu.o	9f1b98da974f7cc4
+3	19543	1698073982251909479	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-cpython-39/_ext_src/src/sampling_gpu.o	9f04249d284460cf
+1	20887	1698073983603912069	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-cpython-39/_ext_src/src/bindings.o	6a0c30659feb5c91
+4	18000	1698077173294016339	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-cpython-39/_ext_src/src/ball_query.o	fb92706c1a1bc269
+6	18006	1698077173298016346	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-cpython-39/_ext_src/src/sampling.o	750cece9358cafd9
+5	18020	1698077173314016376	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-cpython-39/_ext_src/src/interpolate.o	88e48a2de1d87c61
+5	18023	1698077173314016376	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-cpython-39/_ext_src/src/group_points.o	a98754892f7a2376

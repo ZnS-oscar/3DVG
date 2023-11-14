@@ -1,0 +1,11 @@
+log/
+*.pkl
+config.json.txt
+for_cls_id_get_obj_id.txt
+cls_id2pcs.txt
+cls_id2obj_num.txt
+cls_id2pcs.txt
+for_cls_id_get_obj_id.txt
+obj_num2cls_id.txt
+scn_cls_id2obj_id.txt
+

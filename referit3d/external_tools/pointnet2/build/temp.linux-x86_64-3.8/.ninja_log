@@ -1,0 +1,6 @@
+# ninja log v5
+2	16042	1698072004760028750	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-3.8/_ext_src/src/ball_query_gpu.o	261af08b427260d4
+3	16046	1698072004760028750	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-3.8/_ext_src/src/group_points_gpu.o	44918936dde8973a
+4	16047	1698072004764028759	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-3.8/_ext_src/src/interpolate_gpu.o	42d9e1e2d29fcdfb
+3	16093	1698072004812028860	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-3.8/_ext_src/src/sampling_gpu.o	dcf34ea62b692b0b
+1	24410	1698072013120046380	/workspace/3DVG/referit3d/external_tools/pointnet2/build/temp.linux-x86_64-3.8/_ext_src/src/bindings.o	5134b5ec7fface1a

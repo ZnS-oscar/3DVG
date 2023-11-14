@@ -1,0 +1,41 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--mode","evaluate",
+<<<<<<< HEAD
+                "-scannet-file","/workspace/data_zoo/sr3d/keep_all_points_with_global_scan_alignment/keep_all_points_with_global_scan_alignment.pkl",
+                "-referit3D-file","/workspace/data_zoo/referit3dlang/sr3d.csv",
+=======
+                "-scannet-file","/workspace/data_zoo/nr3d/keep_all_points_00_view_with_global_scan_alignment/keep_all_points_00_view_with_global_scan_alignment.pkl",
+                "-referit3D-file","/workspace/data_zoo/referit3dlang/nr3d_255.csv",
+>>>>>>> feat_bank
+                "--bert-pretrain-path","distillbert",
+                "--log-dir","logs/MVT_sr3d ",
+                "--resume-path","/workspace/modelweight/MVT_sr3d/03-29-2022-11-54-10/checkpoints/best_model.pth",
+                "--n-workers","8",
+                "--model","referIt3DNet_transformer",
+                "--unit-sphere-norm","True",
+                "--batch-size","24",
+                "--encoder-layer-num","3",
+                "--decoder-layer-num","4",
+                "--decoder-nhead-num","8",
+                "--gpu","3",
+                "--view_number","4",
+                "--rotate_number","4",
+                "--label-lang-sup","True",
+                "--feat-bank","cls_id2feat_50meanmax.pkl",
+            ]
+        }
+    ]
+}
