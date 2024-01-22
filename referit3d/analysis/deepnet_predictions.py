@@ -35,7 +35,8 @@ def analyze_predictions(model, dataset, class_to_idx, pad_idx, device, args, out
     view_dep_mask = is_explicitly_view_dependent(references)
     easy_context_mask = hardness <= 2
 
-    test_seeds = [args.random_seed, 1, 10, 20, 100]
+    # test_seeds = [args.random_seed, 1, 10, 20, 100]
+    test_seeds = [args.random_seed]
     net_stats_all_seed = []
     for seed in test_seeds:
         d_loader = dataset_to_dataloader(dataset, 'test', args.batch_size, n_workers=5, seed=seed)

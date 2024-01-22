@@ -11,5 +11,6 @@ class AlterScannetPc:
         with open(cls_id2pcsfile_path, 'rb') as cls_id2pcsfile:
             self.cls_id2pcs = pickle.load(cls_id2pcsfile)
 
-    def get_scannet_pc(self,clsid):
+    def get_scannet_pc(self,clsid,npoint):
+        ret_val=self.cls_id2pcs[clsid][0]
         return self.cls_id2pcs[clsid][0]

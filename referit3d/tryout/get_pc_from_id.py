@@ -65,13 +65,16 @@ if __name__ == '__main__':
         pcs=np.float32(pcs)
         if object_transformation is not None:
             pcs = object_transformation(pcs)
-        pcs=torch.tensor(pcs).to(device)
+        # pcs=torch.tensor(pcs).to(device)
+        pcs=torch.tensor(pcs)
+
         cls_id2pcs[int(cls_id)]=pcs
     pcs_padid=np.zeros((len(pcs[0]),len(pcs[0][0])))[np.newaxis,:]
     if object_transformation is not None:
         pcs_padid = object_transformation(pcs_padid)
-    pcs_padid=torch.tensor(np.float32(pcs_padid)).to(device)
-    cls_id2pcs[str(padid)]=pcs_padid
+    pcs_padid=torch.tensor(np.float32(pcs_padid))
+    # pcs_padid=torch.tensor(np.float32(pcs_padid)).to(device)
+    cls_id2pcs[padid]=pcs_padid
     
     # with open(output_file_path, 'w') as cls_id2pcs_file:
     #     json.dump(cls_id2pcs, cls_id2pcs_file)

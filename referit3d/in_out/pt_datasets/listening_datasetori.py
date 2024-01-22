@@ -2,19 +2,26 @@ import numpy as np
 from torch.utils.data import Dataset
 from functools import partial
 from .utils import dataset_to_dataloader, max_io_workers
-
+import pickle
 # the following will be shared on other datasets too if not, they should become part of the ListeningDataset
 # maybe make SegmentedScanDataset with only static functions and then inherit.
 from .utils import check_segmented_object_order, sample_scan_object, pad_samples, objects_bboxes
 from .utils import instance_labels_of_context, mean_rgb_unit_norm_transform
 from ...data_generation.nr3d import decode_stimulus_string
 from transformers import DistilBertTokenizer, DistilBertModel
-from .augpc import AlterScannetPc
-import pickle
+def sample_pc(pc):
+    idx = np.random.choice(1024, 1024, replace=1024 < 1024)
+    return pc[idx]
+def get_obj_pcs():
+    with open('cls_id2pcschair.pkl', 'rb') as chairs_file:
+        pcs = pickle.load(chairs_file)
+    return np.array(pcs[87])
+   
+    return ret
 class ListeningDataset(Dataset):
     def __init__(self, references, scans, vocab, max_seq_len, points_per_object, max_distractors,
                  class_to_idx=None, object_transformation=None,
-                 visualization=False,cls_id2pcs=None):
+                 visualization=False):
 
         self.references = references
         self.scans = scans
@@ -25,14 +32,9 @@ class ListeningDataset(Dataset):
         self.class_to_idx = class_to_idx
         self.visualization = visualization
         self.object_transformation = object_transformation
-        self.cls_id2pcs=cls_id2pcs
+        self.chair=get_obj_pcs()[0]
         if not check_segmented_object_order(scans):
             raise ValueError
-        
-        # self.asp=AlterScannetPc("cls_id2pcs.pkl")
-        # self.cls_id2pcsfile_path="cls_id2pcs.pkl"
-        # with open("cls_id2pcs.pkl", 'rb') as cls_id2pcsfile:
-        #     self.cls_id2pcs = pickle.load(cls_id2pcsfile)
 
     def __len__(self):
         return len(self.references)
@@ -77,24 +79,22 @@ class ListeningDataset(Dataset):
         target_label = target.instance_label
 
         # First add all objects with the same instance-label as the target
-        # distractors = [o for o in scan.three_d_objects if
-        #                (o.instance_label == target_label and (o != target))]
+        distractors = [o for o in scan.three_d_objects if
+                       (o.instance_label == target_label and (o != target))]
         
         #liu
-        distractors=[o for o in scan.three_d_objects if o!=target]
+        # distractors=[o for o in scan.three_d_objects if o!=target]
 
         # Then all more objects up to max-number of distractors
-        # already_included = {target_label}
-        # clutter = [o for o in scan.three_d_objects if o.instance_label not in already_included]
-        # np.random.shuffle(clutter)
+        already_included = {target_label}
+        clutter = [o for o in scan.three_d_objects if o.instance_label not in already_included]
+        np.random.shuffle(clutter)
 
-        # distractors.extend(clutter)
+        distractors.extend(clutter)
         distractors = distractors[:self.max_distractors]
-        # np.random.shuffle(distractors)
+        np.random.shuffle(distractors)
 
         return distractors
-    def get_alt_pc_by_cls(self,cls_label):
-        return np.array(self.cls_id2pcs[self.class_to_idx[cls_label]][0])
 
     def __getitem__(self, index):
         res = dict()
@@ -107,21 +107,13 @@ class ListeningDataset(Dataset):
         target_pos=len(context)
         context.insert(target_pos, target)
 
-        # liu change the src of samples
-
-        samples=np.array([
-            self.get_alt_pc_by_cls(o.instance_label) for o in context
-        ])
-
-
-
-
-        #original samples
         # sample point/color for them
-        # samples = np.array([sample_scan_object(o, self.points_per_object) for o in context])
+        samples = np.array([sample_scan_object(o, self.points_per_object) for o in context])
         # mark their classes
         # res['ori_labels'], 
+        
         res['class_labels'] = instance_labels_of_context(context, self.max_context_size, self.class_to_idx)
+        
         res['scan_id'] = scan_id
         box_info = np.zeros((self.max_context_size, 4))
         box_info[:len(context),0] = [o.get_bbox().cx for o in context]
@@ -130,15 +122,17 @@ class ListeningDataset(Dataset):
         box_info[:len(context),3] = [o.get_bbox().volume() for o in context]
         box_corners = np.zeros((self.max_context_size, 8, 3))
         box_corners[:len(context)] = [o.get_bbox().corners for o in context]
-        # if self.object_transformation is not None:
-        #     samples = self.object_transformation(samples)
+        if self.object_transformation is not None:
+            samples = self.object_transformation(samples)
 
         res['context_size'] = len(samples)
 
         # take care of padding, so that a batch has same number of N-objects across scans.
- 
-        samples=pad_samples(samples, self.max_context_size)
-        res['objects'] = samples
+        # samples=np.array([samples[i] if res['class_labels'][i]!=87 else self.chair for i in range(len(samples))])
+        for i in range(len(samples)):
+            if res['class_labels'][i]==87:
+                samples[i]=self.chair
+        res['objects'] = pad_samples(samples, self.max_context_size)
         # Get a mask indicating which objects have the same instance-class as the target.
         target_class_mask = np.zeros(self.max_context_size, dtype=np.bool)
         target_class_mask[:len(context)] = [target.instance_label == o.instance_label for o in context]
@@ -183,10 +177,7 @@ def make_data_loaders(args, referit_data, vocab, class_to_idx, scans, mean_rgb):
 
     object_transformation = partial(mean_rgb_unit_norm_transform, mean_rgb=mean_rgb,
                                     unit_norm=args.unit_sphere_norm)
-    cls_id2pcs=None
-    if args.pc_bank!="":
-        with open(args.pc_bank, 'rb') as cls_id2pcsfile:
-            cls_id2pcs = pickle.load(cls_id2pcsfile)
+
     for split in splits:
         mask = is_train if split == 'train' else ~is_train
         d_set = referit_data[mask]
@@ -210,7 +201,6 @@ def make_data_loaders(args, referit_data, vocab, class_to_idx, scans, mean_rgb):
             print("length of dataset after removing non multiple test utterances {}".format(len(d_set)))
 
             assert np.sum(~d_set.apply(multiple_targets_utterance, axis=1)) == 0
-        
 
         dataset = ListeningDataset(references=d_set,
                                    scans=scans,
@@ -220,8 +210,7 @@ def make_data_loaders(args, referit_data, vocab, class_to_idx, scans, mean_rgb):
                                    max_distractors=max_distractors,
                                    class_to_idx=class_to_idx,
                                    object_transformation=object_transformation,
-                                   visualization=args.mode == 'evaluate',
-                                   cls_id2pcs=cls_id2pcs)
+                                   visualization=args.mode == 'evaluate')
 
         seed = None
         if split == 'test':

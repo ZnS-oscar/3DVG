@@ -1,3 +1,4 @@
+import open3d as o3d
 import sys
 import json
 import torch
@@ -11,12 +12,14 @@ from termcolor import colored
 import numpy as np
 
 import pickle
+from functools import partial
 from referit3d.in_out.pt_datasets.utils import instance_labels_of_context
 from referit3d.in_out.arguments import parse_arguments
 from referit3d.in_out.neural_net_oriented import load_scan_related_data, load_referential_data
 from referit3d.in_out.neural_net_oriented import compute_auxiliary_data, trim_scans_per_referit3d_data
 from referit3d.in_out.pt_datasets.listening_dataset import make_data_loaders
 from referit3d.utils import set_gpu_to_zero_position, create_logger, seed_training_code
+from referit3d.utils.evaluation import AverageMeter
 from referit3d.utils.tf_visualizer import Visualizer
 from referit3d.models.referit3d_net import ReferIt3DNet_transformer
 from referit3d.models.referit3d_net_utils import single_epoch_train, evaluate_on_dataset
@@ -25,23 +28,109 @@ from referit3d.analysis.deepnet_predictions import analyze_predictions
 from transformers import BertTokenizer, BertModel
 from referit3d.in_out.arguments import parse_arguments
 from referit3d.in_out.neural_net_oriented import load_scan_related_data
-def sample_scan_object(object, n_points):
-    sample = object.sample(n_samples=n_points)
-    return np.concatenate([sample['xyz'], sample['color']], axis=1)
+from referit3d.models.referit3d_net_utils import cls_pred_stats
+def get_obj_pcs():
+    with open('chairs.pkl', 'rb') as chairs_file:
+        pcs = pickle.load(chairs_file)
+    pcs = pcs[1:]
+    b, n, _ = pcs.shape
+    z = np.zeros((b, n, 3))
+    ret = np.concatenate((pcs, z), axis=-1)
+    return ret
+def get_pc_from_pcbank():
+    with open('cls_id2pcs.pkl', 'rb') as cls_id2pcsfile:
+        cls_id2pcs = pickle.load(cls_id2pcsfile)
+        cls_id2pcskeys=cls_id2pcs.keys()
+        cls_idlist=[]
+        pc=cls_id2pcs[524]
+        for k in cls_id2pcskeys:
+            cls_idlist.append(int(k))
+            pc=torch.concat((pc,cls_id2pcs[k]),dim=0)
+        cls_idlist=np.array(cls_idlist,dtype=np.int64)
+        pc=pc[1:,...]
+        pc=np.array(pc)
+        return cls_idlist,pc
 
+
+
+def sample_pc(pc):
+    idx = np.random.choice(1024, 1024, replace=1024 < 1024)
+    return pc[idx]
+
+def show_pc(pt):
+    pc = o3d.geometry.PointCloud()
+    pc.points = o3d.utility.Vector3dVector(pt[..., :3])
+    pc.colors = o3d.utility.Vector3dVector(pt[..., 3:])
+    o3d.visualization.draw_geometries([pc])
+
+def mean_rgb_unit_norm_transform(segmented_objects, mean_rgb, unit_norm, epsilon_dist=10e-6, inplace=True):
+    """
+    :param segmented_objects: K x n_points x 6, K point-clouds with color.
+    :param mean_rgb:
+    :param unit_norm:
+    :param epsilon_dist: if max-dist is less than this, we apply not scaling in unit-sphere.
+    :param inplace: it False, the transformation is applied in a copy of the segmented_objects.
+    :return:
+    """
+    if not inplace:
+        segmented_objects = segmented_objects.copy()
+
+    # adjust rgb
+    segmented_objects[:, :, 3:6] -= np.expand_dims(mean_rgb, 0)
+
+    # center xyz
+    if unit_norm:
+        xyz = segmented_objects[:, :, :3]
+        mean_center = xyz.mean(axis=1)
+        xyz -= np.expand_dims(mean_center, 1)
+        max_dist = np.max(np.sqrt(np.sum(xyz ** 2, axis=-1)), -1)
+        max_dist[max_dist < epsilon_dist] = 1  # take care of tiny point-clouds, i.e., padding
+        xyz /= np.expand_dims(np.expand_dims(max_dist, -1), -1)
+        segmented_objects[:, :, :3] = xyz
+
+    return segmented_objects
+
+def mean_color():
+    return np.zeros((1, 3),dtype=np.float32)
+def spin_pts(pts):
+    mat = torch.tensor([[1, 0, 0],
+                          [0, 0, -1],
+                          [0, 1, 0]],dtype=torch.float64)
+
+    rotated_pc = torch.matmul(mat,pts[:,:3].T)
+    rotated_pc=rotated_pc.T
+
+    return torch.concat((rotated_pc,pts[:,3:]),dim=-1)
 if __name__ == '__main__':
 
-    # load from txt
     class_to_idx_path = "class_to_idx_nr3d.txt"
-    with open("class_to_idx_nr3d.txt", 'r') as class_to_idx_file:
+    with open(class_to_idx_path, 'r') as class_to_idx_file:
         class_to_idx = json.load(class_to_idx_file)
-        
-    # Parse arguments
+
+    device = torch.device('cuda')
+    # cls_idlist,pcs=get_pc_from_pcbank()
+    # cls_idlist=torch.tensor(cls_idlist).to(device)
+    # pcs=torch.tensor(pcs).to(device)
+    # reg_pcs=pcs
+
+    opcs = get_obj_pcs()
+    pcs=[np.array(spin_pts(torch.tensor(op)) )for op in opcs]
+    pcs=np.array(pcs)
+    sampled_pcs = [sample_pc(pc) for pc in pcs]
+    sampled_pcs=np.array(sampled_pcs)
+    mean_rgb=mean_color()
+    object_transformation = partial(mean_rgb_unit_norm_transform, mean_rgb=mean_rgb,
+        unit_norm=True)
+    reg_pcs = object_transformation(sampled_pcs)
+
+    reg_pcs = torch.tensor(reg_pcs).float()
+    reg_pcs=reg_pcs.to(device)
+
     args = parse_arguments()
     # Prepare GPU environment
     set_gpu_to_zero_position(args.gpu)  # Pnet++ seems to work only at "gpu:0"
 
-    device = torch.device('cuda')
+
     seed_training_code(args.random_seed)
     # Prepare the Listener
     n_classes = len(class_to_idx) - 1  # -1 to ignore the <pad> class    
@@ -104,116 +193,50 @@ if __name__ == '__main__':
             print('Ready to *fine-tune* the model for a max of {} epochs'.format(dummy))
 
 
-    # load from txt
-    pc_path = "obj_pc.pkl"
-    with open(pc_path, 'rb') as pc_file:
-        pc = pickle.load(pc_file)
-    gtfeat_path = "objects_features.pkl"
-    with open(gtfeat_path, 'rb') as gtfeat_file:
-        gtfeat = pickle.load(gtfeat_file)
-
     net=model.object_encoder
-    cls_id2feat_avg,cls_id2feat_max,cls_id2feat45d_avg,cls_id2feat45d_max,cls_id2feat45d0_avg,cls_id2feat45d0_max={},{},{},{},{},{}
-    cls_id2feat_avgmax={}
 
-    
-
-
-    # pcs_tensor=torch.tensor(cls_id2pcs[cls_id]).to(device)
-    pc_1=pc.unsqueeze(0)
     with torch.no_grad():
         net.eval()
-        feat_45d=net(pc_1.repeat(45,1,1))
-        feat_bd=net(pc_1)
-    # print("pcs_tensor loaded",torch.cuda.memory_allocated())
-    aaa=[
-    torch.cosine_similarity(feat_45d[0],feat_45d[1],dim=0),
-    torch.cosine_similarity(feat_45d[1],feat_45d[2],dim=0),
-    torch.cosine_similarity(feat_45d[0],feat_bd[0],dim=0),
-    torch.cosine_similarity(feat_45d[0],gtfeat,dim=0),
-    torch.cosine_similarity(feat_bd[0],gtfeat,dim=0),
-    torch.cosine_similarity(feat_bd[0],feat_45d[0],dim=0),
-    ]
-    print(aaa)
+        feat=net(reg_pcs)
+    obj_feats = model.obj_feature_mapping(feat)
+    cls_acc_mtr = AverageMeter()
+    tokenizer = BertTokenizer.from_pretrained(args.bert_pretrain_path)
+    class_name_tokens = tokenizer(class_name_list, return_tensors='pt', padding=True)
+    for name in class_name_tokens.data:
+        class_name_tokens.data[name] = class_name_tokens.data[name].cuda()
+    label_lang_infos = model.language_encoder(**class_name_tokens)[0][:,0]
 
+    B,N = feat.shape
+    CLASS_LOGITS = torch.matmul(obj_feats, label_lang_infos.permute(1,0))
+    # CLASS_LOGITS=CLASS_LOGITS.unsqueeze(0)
+    class_labels=torch.zeros((B,),dtype=torch.int64)+87
+    # class_labels=class_labels.unsqueeze(0)
+    class_labels=class_labels.to(device)
 
-
-    # last_element=pcs_tensor[-1]
-    # last_element=last_element.unsqueeze(0).repeat(expansion_n,1,1)
-    # pcs_45d=torch.cat((pcs_tensor,last_element),dim=0)
-    # print("pcs gen",torch.cuda.memory_allocated())
-    # with torch.no_grad():
-    #     net.eval()
-    #     feat_45d=net(pcs_45d)
-    # print("feat gen",torch.cuda.memory_allocated())
-    # zero_e=torch.zeros([expansion_n]+list(pcs_tensor.shape[1:])).to(device)
-    # pcs_45d0=torch.cat((pcs_tensor,zero_e),dim=0)
-    # with torch.no_grad():
-    #     net.eval()
-    #     feat_45d0=net(pcs_45d0)        
+    predictions = CLASS_LOGITS.argmax(dim=-1)
+    n_obj=predictions.shape[0]
+    similar_cls=[87]
+    log10,top10=CLASS_LOGITS.topk(k=10)
+    dif=[0]*n_obj
+    for i in range(n_obj):
+        if predictions[i]==87:
+            for t10 in top10[i]:
+                if t10 not in similar_cls:
+                    dif[i]=(CLASS_LOGITS[i][87]-CLASS_LOGITS[i][t10])/CLASS_LOGITS[i][87]
+                    break
     
-    # feat_avg=torch.mean(feat_bd, dim=0)
-    # feat_max=torch.max(feat_bd, dim=0).values
-    # feat_avgmax=feat_avg+feat_max
-    # feat_45d_avg=torch.mean(feat_45d, dim=0)
-    # feat_45d_max=torch.max(feat_45d, dim=0).values 
 
-    # feat_45d0_avg=torch.mean(feat_45d0, dim=0)
-    # feat_45d0_max=torch.max(feat_45d0, dim=0).values
 
+
+
+
+
+            
+
+
+
+
+    cls_b_acc, found_samples,n_obj_per_cls,n_err_per_cls,wrong_samples,wrong_valid_bn= cls_pred_stats(CLASS_LOGITS, class_labels, ignore_label=pad_idx)    
     
-    
-    # cls_id2feat_avg[int(cls_id)]=feat_avg
-    # cls_id2feat_max[int(cls_id)]=feat_bd[0]
-    # cls_id2feat_avgmax[int(cls_id)]=feat_avgmax        
-    # cls_id2feat45d_avg[int(cls_id)]=feat_45d_avg
-    # cls_id2feat45d_max[int(cls_id)]=feat_45d_max
-
-    # cls_id2feat45d0_avg[int(cls_id)]=feat_45d0_avg
-    # cls_id2feat45d0_max[int(cls_id)]=feat_45d0_max
-    # del pcs_tensor
-    # del last_element
-    # del zero_e
-    torch.cuda.empty_cache()
-
-
-
-
-
-    # cls_id2feat_avg['feat_dim']=feat_avg.shape
-    # cls_id2feat_max['feat_dim']=feat_max.shape
-    # cls_id2feat45d_avg['feat_dim']=torch.Size([768])
-    # cls_id2feat45d_max['feat_dim']=feat_45d_max.shape
-    # cls_id2feat45d0_avg['feat_dim']=feat_45d0_avg.shape
-    # cls_id2feat45d0_max['feat_dim']=feat_45d0_max.shape
-    # cls_id2feat_avgmax['feat_dim']=torch.tensor(feat_avgmax.shape).to(feat_avgmax.device)
-    # cls_id2feat_avgmax[999]=torch.tensor([9999])
-    # feat_path = "cls_id2feat_avg.pkl"
-    # with open(feat_path, 'wb') as cls_id2feat_avg_file:
-    #     pickle.dump(cls_id2feat_avg, cls_id2feat_avg_file)
-
-    feat_path = "cls_id2feat_max.pkl"
-    with open(feat_path, 'wb') as cls_id2feat_max_file:
-        pickle.dump(cls_id2feat_max, cls_id2feat_max_file)
-
-    # feat_path = "cls_id2feat45d_avg.pkl"
-    # with open(feat_path, 'wb') as cls_id2feat45d_avg_file:
-    #     pickle.dump(cls_id2feat45d_avg, cls_id2feat45d_avg_file)
-    # feat_path = "cls_id2feat45d_max.pkl"
-    # with open(feat_path, 'wb') as cls_id2feat45d_max_file:
-    #     pickle.dump(cls_id2feat45d_max, cls_id2feat45d_max_file)
-    
-    # feat_path = "cls_id2feat45d0_avg.pkl"
-    # with open(feat_path, 'wb') as cls_id2feat45d0_avg_file:
-    #     pickle.dump(cls_id2feat45d0_avg, cls_id2feat45d0_avg_file)
-    # feat_path = "cls_id2feat45d0_max.pkl"
-    # with open(feat_path, 'wb') as cls_id2feat45d0_max_file:
-    #     pickle.dump(cls_id2feat45d0_max, cls_id2feat45d0_max_file)    
-
-    # feat_path = "cls_id2feat_avgmax.pkl"
-    # with open(feat_path, 'wb') as cls_id2feat_avgmax_file:
-    #     pickle.dump(cls_id2feat_avgmax, cls_id2feat_avgmax_file)  
-
-
-
-
+    cls_acc_mtr.update(cls_b_acc, B)
+    print(cls_acc_mtr.avg)

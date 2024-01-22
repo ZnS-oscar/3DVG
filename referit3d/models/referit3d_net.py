@@ -1,6 +1,5 @@
 import json
 import torch
-import pickle
 import argparse
 from torch import nn
 import torch.nn.functional as F
@@ -145,14 +144,10 @@ class ReferIt3DNet_transformer(nn.Module):
         ## rotation augmentation and multi_view generation
         obj_points, boxs = self.aug_input(batch['objects'], batch['box_info'])
         B,N,P = obj_points.shape[:3]
-        obj_pc_path = "obj_pc.pkl"
-        with open(obj_pc_path, 'wb') as obj_pc_file:
-            pickle.dump(obj_points[0][0], obj_pc_file)
+
         ## obj_encoding
         objects_features = get_siamese_features(self.object_encoder, obj_points, aggregator=torch.stack)
-        objects_features_path = "objects_features.pkl"
-        with open(objects_features_path, 'wb') as objects_features_file:
-            pickle.dump(objects_features[0][0], objects_features_file)        
+        
         ## obj_encoding
         obj_feats = self.obj_feature_mapping(objects_features)
         box_infos = self.box_feature_mapping(boxs)

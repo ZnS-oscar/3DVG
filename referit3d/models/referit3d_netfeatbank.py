@@ -1,5 +1,6 @@
 import json
 import torch
+import pickle
 import argparse
 from torch import nn
 import torch.nn.functional as F
@@ -89,6 +90,13 @@ class ReferIt3DNet_transformer(nn.Module):
         self.logit_loss = nn.CrossEntropyLoss()
         self.lang_logits_loss = nn.CrossEntropyLoss()
         self.class_logits_loss = nn.CrossEntropyLoss(ignore_index=ignore_index)
+        self.feat_bank=args.feat_bank
+        if self.feat_bank!="":
+            with open(self.feat_bank, 'rb') as cls_id2feat_file:
+                self.cls_id2feat = pickle.load(cls_id2feat_file)
+            # self.feat_dim=self.cls_id2feat['feat_dim']
+            self.feat_dim=torch.Size([768])
+            # del self.cls_id2feat['feat_dim']
 
     @torch.no_grad()
     def aug_input(self, input_points, box_infos):
@@ -148,6 +156,29 @@ class ReferIt3DNet_transformer(nn.Module):
         ## obj_encoding
         objects_features = get_siamese_features(self.object_encoder, obj_points, aggregator=torch.stack)
         
+        #liu feaat bank
+        # boxs are still needed
+        obj_points, boxs = self.aug_input(batch['objects'], batch['box_info'])
+        B,N,P = obj_points.shape[:3]
+
+        # read the feat bank
+        # with open(self.feat_bank, 'rb') as cls_id2feat_file:
+        #     cls_id2feat = pickle.load(cls_id2feat_file)
+        # class_labels[obj_id]=class_id  
+        class_labels=batch['class_labels']
+        objects_features=torch.zeros(class_labels.shape+self.feat_dim).to(self.device)
+
+
+        for key, value in self.cls_id2feat.items():
+            mask = class_labels == key
+            objects_features += mask.unsqueeze(-1) * value
+
+       
+
+
+
+
+
         ## obj_encoding
         obj_feats = self.obj_feature_mapping(objects_features)
         box_infos = self.box_feature_mapping(boxs)

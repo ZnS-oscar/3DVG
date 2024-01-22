@@ -41,7 +41,7 @@ if __name__ == '__main__':
         scn_cls_id2obj_id = json.load(scn_cls_id2obj_id_file)
 
     # read cls2idx
-    input_file_path2="class_to_idx.txt"
+    input_file_path2="class_to_idx_nr3d.txt"
     with open(input_file_path2, 'r') as class_to_idx_file:
         class_to_idx = json.load(class_to_idx_file)
 
@@ -63,13 +63,8 @@ if __name__ == '__main__':
                 for_cls_id_get_obj_id[cls_id]=[(scene_id,o_id) for o_id in obj_ids]
             else:
                 for_cls_id_get_obj_id[cls_id]+=[(scene_id,o_id) for o_id in obj_ids]
-<<<<<<< HEAD
-            if len(for_cls_id_get_obj_id[cls_id])>=5:
-                for_cls_id_get_obj_id[cls_id]=for_cls_id_get_obj_id[cls_id][:5]
-=======
-            if len(for_cls_id_get_obj_id[cls_id])>=50:
-                for_cls_id_get_obj_id[cls_id]=for_cls_id_get_obj_id[cls_id][:50]
->>>>>>> feat_bank
+            if len(for_cls_id_get_obj_id[cls_id])>=1:
+                for_cls_id_get_obj_id[cls_id]=for_cls_id_get_obj_id[cls_id][:1]
                 cls_id_flag[int(cls_id)]=True
      
     for_cls_id_get_obj_id_keys=for_cls_id_get_obj_id.keys()

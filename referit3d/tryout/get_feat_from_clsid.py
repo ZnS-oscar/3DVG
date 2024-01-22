@@ -34,8 +34,8 @@ def sample_scan_object(object, n_points):
 @torch.no_grad()
 def main():
     # load from txt
-    class_to_idx_path = "class_to_idx.txt"
-    with open("class_to_idx.txt", 'r') as class_to_idx_file:
+    class_to_idx_path = "class_to_idx_nr3d.txt"
+    with open("class_to_idx_nr3d.txt", 'r') as class_to_idx_file:
         class_to_idx = json.load(class_to_idx_file)
         
     # Parse arguments
@@ -108,7 +108,7 @@ def main():
 
 
     # load from pkl
-    cls_id2pcs_path = "cls_id2pcs.pkl"
+    cls_id2pcs_path = "cls_id2pcschair.pkl"
     with open(cls_id2pcs_path, 'rb') as cls_id2pcsfile:
         cls_id2pcs = pickle.load(cls_id2pcsfile)
 
@@ -116,25 +116,13 @@ def main():
     
 
     net=model.object_encoder
-    cls_id2feat_mean,cls_id2feat_max,cls_id2feat45d_mean,cls_id2feat45d_max,cls_id2feat45d0_mean,cls_id2feat45d0_max={},{},{},{},{},{}
+    cls_id2feat_1,cls_id2feat_mean,cls_id2feat_max,cls_id2feat45d_mean,cls_id2feat45d_max,cls_id2feat45d0_mean,cls_id2feat45d0_max={},{},{},{},{},{},{}
     cls_id2feat_meanmax={}
     cls_id2feat={}
     cls_ids=cls_id2pcs.keys()
     
 
     for cls_id in cls_ids:
-<<<<<<< HEAD
-        pcs=cls_id2pcs[cls_id]
-        feat_bd=net(torch.tensor(pcs).to(device))
-        feat_avg=torch.mean(feat_bd, dim=0)
-        cls_id2feat[int(cls_id)]=feat_avg
-    cls_id2feat['feat_dim']=feat_avg.shape
-
-    feat_path = "cls_id2feat.pkl"
-    with open(feat_path, 'wb') as cls_id2feat_file:
-        pickle.dump(cls_id2feat, cls_id2feat_file)
-    
-=======
         pcs_tensor=cls_id2pcs[cls_id].to(device)
         feat_bd=net(pcs_tensor)
         # print("pcs_tensor loaded",torch.cuda.memory_allocated())
@@ -158,9 +146,9 @@ def main():
         #     net.eval()
         #     feat_45d0=net(pcs_45d0)        
         
-        feat_mean=torch.mean(feat_bd, dim=0)
-        feat_max=torch.max(feat_bd, dim=0).values
-        feat_meanmax=feat_mean+feat_max
+        # feat_mean=torch.mean(feat_bd, dim=0)
+        # feat_max=torch.max(feat_bd, dim=0).values
+        # feat_meanmax=feat_mean+feat_max
         # feat_45d_mean=torch.mean(feat_45d, dim=0)
         # feat_45d_max=torch.max(feat_45d, dim=0).values 
 
@@ -168,16 +156,15 @@ def main():
         # feat_45d0_max=torch.max(feat_45d0, dim=0).values
 
         
-        
-        cls_id2feat_mean[int(cls_id)]=feat_mean
-        cls_id2feat_max[int(cls_id)]=feat_max        
-        cls_id2feat_meanmax[int(cls_id)]=feat_meanmax        
+        cls_id2feat_1[int(cls_id)]=feat_bd.squeeze()
+        # cls_id2feat_mean[int(cls_id)]=feat_mean
+        # cls_id2feat_max[int(cls_id)]=feat_max        
+        # cls_id2feat_meanmax[int(cls_id)]=feat_meanmax        
         # ob_num=1
         # cls_id2feat[int(cls_id)]=feat_bd.squeeze()
 
         # cls_id2feat45d_mean[int(cls_id)]=feat_45d_mean
         # cls_id2feat45d_max[int(cls_id)]=feat_45d_max
->>>>>>> feat_bank
 
         # cls_id2feat45d0_mean[int(cls_id)]=feat_45d0_mean
         # cls_id2feat45d0_max[int(cls_id)]=feat_45d0_max
@@ -202,16 +189,17 @@ def main():
     # with open(feat_path, 'wb') as cls_id2feat_mean_file:
     #     pickle.dump(cls_id2feat_mean, cls_id2feat_mean_file)
 
-    cls_id2feat_20meanpath = "cls_id2feat_50mean.pkl"
-    with open(cls_id2feat_20meanpath, 'wb') as cls_id2feat_20meanpathfile:
-        pickle.dump(cls_id2feat_mean, cls_id2feat_20meanpathfile)
-    cls_id2feat_20maxpath = "cls_id2feat_50max.pkl"
-    with open(cls_id2feat_20maxpath, 'wb') as cls_id2feat_20maxpathfile:
-        pickle.dump(cls_id2feat_max, cls_id2feat_20maxpathfile)
-    cls_id2feat_meanmaxpath = "cls_id2feat_50meanmax.pkl"
-    with open(cls_id2feat_meanmaxpath, 'wb') as cls_id2feat_meanmaxpathfile:
-        pickle.dump(cls_id2feat_meanmax, cls_id2feat_meanmaxpathfile)
-
+    # cls_id2feat_20meanpath = "cls_id2feat_50mean.pkl"
+    # with open(cls_id2feat_20meanpath, 'wb') as cls_id2feat_20meanpathfile:
+    #     pickle.dump(cls_id2feat_mean, cls_id2feat_20meanpathfile)
+    # cls_id2feat_20maxpath = "cls_id2feat_50max.pkl"
+    # with open(cls_id2feat_20maxpath, 'wb') as cls_id2feat_20maxpathfile:
+    #     pickle.dump(cls_id2feat_max, cls_id2feat_20maxpathfile)
+    # cls_id2feat_meanmaxpath = "cls_id2feat_50meanmax.pkl"
+    # with open(cls_id2feat_meanmaxpath, 'wb') as cls_id2feat_meanmaxpathfile:
+    #     pickle.dump(cls_id2feat_meanmax, cls_id2feat_meanmaxpathfile)
+    with open("cls_id2featchair.pkl", 'wb') as cls_id2feat_1pathfile:
+        pickle.dump(cls_id2feat_1, cls_id2feat_1pathfile)
 
 if __name__ == '__main__':
     main()

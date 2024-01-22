@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import tqdm
 import torch.nn.functional as F
-
+import pickle
 from ..utils.evaluation import AverageMeter
 
 
@@ -88,8 +88,9 @@ def single_epoch_train(model, data_loader, criteria, optimizer, device, pad_idx,
         ref_acc_mtr.update(guessed_correctly, batch_size)
 
         if args.obj_cls_alpha > 0:
-            cls_b_acc, _ = cls_pred_stats(res['class_logits'], batch['class_labels'], ignore_label=pad_idx)
+            cls_b_acc, found_samples,n_obj_per_cls,n_err_per_cls,wrong_samples = cls_pred_stats(res['class_logits'], batch['class_labels'], ignore_label=pad_idx)
             cls_acc_mtr.update(cls_b_acc, batch_size)
+            
 
         if args.lang_cls_alpha > 0:
             batch_guess = torch.argmax(res['lang_logits'], -1)
@@ -113,7 +114,15 @@ def evaluate_on_dataset(model, data_loader, criteria, device, pad_idx, args, ran
     ref_acc_mtr = AverageMeter()
     cls_acc_mtr = AverageMeter()
     txt_acc_mtr = AverageMeter()
-
+    tot_n_obj_per_cls=None
+    tot_n_err_per_cls=None
+    tot_wrong_samples=None
+    tot_n_spl_per_cls=None
+    tot_n_wrong_obj_ref_per_cls=None
+    tot_wrong_obj_ref=None
+    tot_n_wrongguess_per_cls=None
+    tot_n_wrong_obj_tar_per_cls=None
+    # tot_n_spl_per_cls=torch.zeros(525).to(device)
     # Set the model in training mode
     model.eval()
 
@@ -123,6 +132,7 @@ def evaluate_on_dataset(model, data_loader, criteria, device, pad_idx, args, ran
         np.random.seed(args.random_seed)
 
     batch_keys = make_batch_keys(args)
+
 
     for batch in tqdm.tqdm(data_loader):
         # Move data to gpu
@@ -149,26 +159,115 @@ def evaluate_on_dataset(model, data_loader, criteria, device, pad_idx, args, ran
 
         # Update the loss and accuracy meters
         target = batch['target_pos']
+
+        
         batch_size = target.size(0)  # B x N_Objects
         total_loss_mtr.update(LOSS.item(), batch_size)
 
         predictions = torch.argmax(res['logits'], dim=1)
         guessed_correctly = torch.mean((predictions == target).double()).item()
         ref_acc_mtr.update(guessed_correctly, batch_size)
+        #liu ref class 
+        n_class=CLASS_LOGITS.shape[-1]
+        target_label=[batch['class_labels'][i,t].item() for i,t in enumerate(target)]
+        target_label=torch.tensor(target_label)
+
+        # for tl in target_label:
+        #     tot_n_spl_per_cls[tl]+=1
+         
+        n_spl_per_cls=cnt_n_val(target_label,n_class).to(device)
+        wrong_sample_guess_nw=torch.nonzero(predictions!=target).squeeze()
+        gt_of_wrong_sample_guess=target_label[wrong_sample_guess_nw]
+        n_wrongguess_per_cls=cnt_n_val(gt_of_wrong_sample_guess,n_class)
+        if tot_n_spl_per_cls is None:
+            tot_n_spl_per_cls=n_spl_per_cls
+        else:
+            tot_n_spl_per_cls+=n_spl_per_cls
+        if tot_n_wrongguess_per_cls is None:
+            tot_n_wrongguess_per_cls=n_wrongguess_per_cls
+        else:
+            tot_n_wrongguess_per_cls+=n_wrongguess_per_cls
+
 
         if args.obj_cls_alpha > 0:
-            cls_b_acc, _ = cls_pred_stats(res['class_logits'], batch['class_labels'], ignore_label=pad_idx)
+
+            wrong_samples={}
+            cls_b_acc, found_samples,n_obj_per_cls,n_err_per_cls,wrong_samples,wrong_valid_bn= cls_pred_stats(res['class_logits'], batch['class_labels'], ignore_label=pad_idx)
+            scan_id_b=np.array(batch['scan_id'])
+            scan_id_coord=wrong_samples['coordinate'][:,0].cpu()
+            wrong_samples['scan_id']=scan_id_b[scan_id_coord]
+            if tot_n_obj_per_cls is None:
+                tot_n_obj_per_cls=n_obj_per_cls
+            else:
+                tot_n_obj_per_cls+=n_obj_per_cls
+            if tot_n_err_per_cls is None:
+                tot_n_err_per_cls=n_err_per_cls
+            else:
+                tot_n_err_per_cls+=n_err_per_cls
+            if tot_wrong_samples is None:
+                tot_wrong_samples=wrong_samples
+            else:
+                wrong_sample_keys=list(wrong_samples.keys())
+                wrong_sample_keys.remove('scan_id')
+                for key in wrong_sample_keys:
+                    tot_wrong_samples[key]=torch.cat((tot_wrong_samples[key],wrong_samples[key]),dim=0)
+                tot_wrong_samples['scan_id']=np.concatenate((tot_wrong_samples['scan_id'],wrong_samples['scan_id']),axis=0)
             cls_acc_mtr.update(cls_b_acc, batch_size)
+        
+        wrong_guess_target_obj_res=torch.tensor([wrong_valid_bn[i][t].item() for i,t in enumerate(target)]).to(target.device)
+        wrong_guess_sample_ref_res=(predictions!=target)
+        wrong_obj_ref=torch.logical_and(wrong_guess_target_obj_res,wrong_guess_sample_ref_res)
+        
+        wrong_obj_ref_tar_label=target_label[wrong_obj_ref ].to(target.device)
+        n_wrong_obj_ref_per_cls=cnt_n_val(wrong_obj_ref_tar_label,n_class)
+       
+        if tot_n_wrong_obj_ref_per_cls is None:
+            tot_n_wrong_obj_ref_per_cls=n_wrong_obj_ref_per_cls
+        else:
+            tot_n_wrong_obj_ref_per_cls+=n_wrong_obj_ref_per_cls
+
+        wrong_obj_tar_label=target_label[wrong_guess_target_obj_res].to(target.device)
+        n_wrong_obj_tar_per_cls=cnt_n_val(wrong_obj_tar_label,n_class)
+    
+        if tot_n_wrong_obj_tar_per_cls is None:
+            tot_n_wrong_obj_tar_per_cls=n_wrong_obj_tar_per_cls
+        else:
+            tot_n_wrong_obj_tar_per_cls+=n_wrong_obj_tar_per_cls
+       
+        # if not ((n_wrong_obj_ref_per_cls==n_wrong_obj_tar_per_cls).all().item()):
+        #     print("stop here")
 
         if args.lang_cls_alpha > 0:
             batch_guess = torch.argmax(res['lang_logits'], -1)
             cls_b_acc = torch.mean((batch_guess == batch['target_class']).double())
             txt_acc_mtr.update(cls_b_acc, batch_size)
 
+
+    # with open("wrong_samples.pkl",'wb') as wrong_samples_file:
+	#     pickle.dump(tot_wrong_samples, wrong_samples_file)
+    # with open("tot_n_obj_per_cls.pkl",'wb') as tot_n_obj_per_clsfile:
+    #     pickle.dump(tot_n_obj_per_cls, tot_n_obj_per_clsfile)    
+    # with open("tot_n_err_per_cls.pkl",'wb') as tot_n_err_per_clsfile:
+	#     pickle.dump(tot_n_err_per_cls, tot_n_err_per_clsfile)
     metrics['test_total_loss'] = total_loss_mtr.avg
     metrics['test_referential_acc'] = ref_acc_mtr.avg
     metrics['test_object_cls_acc'] = cls_acc_mtr.avg
     metrics['test_txt_cls_acc'] = txt_acc_mtr.avg
+    metrics['err_rate_per_cls']=tot_n_err_per_cls/tot_n_obj_per_cls*100
+    metrics['tot_n_err_per_cls']=tot_n_err_per_cls
+    metrics['tot_n_obj_per_cls']=tot_n_obj_per_cls
+    metrics['tot_n_spl_per_cls']=tot_n_spl_per_cls
+    tot_n_wrongguess_per_cls=torch.tensor(tot_n_wrongguess_per_cls).to(device)
+    metrics['tot_n_wrongguess_per_cls']=tot_n_wrongguess_per_cls
+
+    metrics['tot_n_wrong_obj_ref_per_cls']=tot_n_wrong_obj_ref_per_cls
+    metrics['tot_n_wrong_obj_tar_per_cls']=tot_n_wrong_obj_tar_per_cls
+    clserr=tot_n_err_per_cls/tot_n_obj_per_cls
+    referr=tot_n_wrongguess_per_cls/tot_n_spl_per_cls
+    # metrics['tot_n_spl_per_cls']=tot_n_spl_per_cls
+    print("!!!!!attention!!!!!!!!!")
+    print("tot_n_err_per_cls:",sum(tot_n_err_per_cls))
+    print("tot_n_obj_per_cls",sum(tot_n_obj_per_cls))
     return metrics
 
 
@@ -314,8 +413,21 @@ def prediction_stats(logits, gt_labels):
     mean_accuracy = torch.mean(correct_guessed.double()).item()
     return mean_accuracy
 
+def cnt_n_val(t,n_type=-1):
+    """
+    count the number of each type of val in tensor t
+    :param t
+    :param n_type: number of type of val in t
+    :return ret: ret[value in t]=count of value in t
+    """
+    unique, counts = torch.unique(t, return_counts=True)
+    if n_type==-1:
+        n_type=max(unique.shape[0],unique.max())+1
+    ret = torch.zeros(n_type, dtype=torch.int64).to(t.device)
+    ret[unique]=counts
+    return ret
 
-@torch.no_grad()
+
 def cls_pred_stats(logits, gt_labels, ignore_label):
     """ Get the prediction statistics: accuracy, correctly/wrongly predicted test examples
     :param logits: The output of the model (predictions) of size: B x N_Objects x N_Classes
@@ -323,7 +435,11 @@ def cls_pred_stats(logits, gt_labels, ignore_label):
     :param ignore_label: The label of the padding class (to be ignored)
     :return: The mean accuracy and lists of correct and wrong predictions
     """
+
+    gt_labels_bn=gt_labels
     predictions = logits.argmax(dim=-1)  # B x N_Objects x N_Classes --> B x N_Objects
+    # predictions=logits
+    predictions_bn=predictions
     valid_indices = gt_labels != ignore_label
 
     predictions = predictions[valid_indices]
@@ -335,4 +451,48 @@ def cls_pred_stats(logits, gt_labels, ignore_label):
     found_samples = gt_labels[correct_guessed]
     # missed_samples = gt_labels[torch.logical_not(correct_guessed)] # TODO  - why?
     mean_accuracy = torch.mean(correct_guessed.double()).item()
-    return mean_accuracy, found_samples
+
+    #liu 
+    n_class=logits.shape[-1]
+    right_guess_bn= gt_labels_bn==predictions_bn
+    wrong_valid_bn=torch.logical_and(torch.logical_not(right_guess_bn),valid_indices)
+
+    n_obj_per_cls=cnt_n_val(gt_labels_bn,n_class)
+    # n_err_per_cls=torch.zeros(n_class)
+    wrong_samples_nw2=torch.nonzero(wrong_valid_bn==True)#coordinate of wrong samples
+    gt_of_wrong_guess=gt_labels_bn[wrong_samples_nw2[:,0],wrong_samples_nw2[:,1]]
+    n_err_per_cls=cnt_n_val(gt_of_wrong_guess,n_class)
+
+    wrong_samples={}
+    coord=wrong_samples_nw2#coordinate of wrong samples
+    wrong_samples['coordinate']=coord #shape n_wrongsamples,2
+    wrong_samples['gt_label']=gt_labels_bn[coord[:,0],coord[:,1]]
+    wrong_samples['err_label']=predictions_bn[coord[:,0],coord[:,1]]
+
+    return mean_accuracy, found_samples,n_obj_per_cls,n_err_per_cls,wrong_samples,wrong_valid_bn
+
+
+#original cls_pred_stats
+# @torch.no_grad()
+# def cls_pred_stats(logits, gt_labels, ignore_label):
+#     """ Get the prediction statistics: accuracy, correctly/wrongly predicted test examples
+#     :param logits: The output of the model (predictions) of size: B x N_Objects x N_Classes
+#     :param gt_labels: The ground truth labels of size: B x N_Objects
+#     :param ignore_label: The label of the padding class (to be ignored)
+#     :return: The mean accuracy and lists of correct and wrong predictions
+#     """
+#     predictions = logits.argmax(dim=-1)  # B x N_Objects x N_Classes --> B x N_Objects
+#     valid_indices = gt_labels != ignore_label
+
+#     predictions = predictions[valid_indices]
+#     gt_labels = gt_labels[valid_indices]
+
+#     correct_guessed = gt_labels == predictions
+#     assert (type(correct_guessed) == torch.Tensor)
+
+#     found_samples = gt_labels[correct_guessed]
+#     # missed_samples = gt_labels[torch.logical_not(correct_guessed)] # TODO  - why?
+#     mean_accuracy = torch.mean(correct_guessed.double()).item()
+    
+
+#     return mean_accuracy, found_samples

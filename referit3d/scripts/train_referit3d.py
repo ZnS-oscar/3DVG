@@ -58,6 +58,8 @@ if __name__ == '__main__':
     args = parse_arguments()
     # Read the scan related information
     all_scans_in_dict, scans_split, class_to_idx = load_scan_related_data(args.scannet_file)
+    # with open("class_to_idx_nr3d.txt", 'w') as file:
+    #     json.dump(class_to_idx, file)
     # Read the linguistic data of ReferIt3D
     referit_data = load_referential_data(args, args.referit3D_file, scans_split)
     # Prepare data & compute auxiliary meta-information.
@@ -96,7 +98,7 @@ if __name__ == '__main__':
         model = nn.DataParallel(model)
     
     model = model.to(device)
-    print(model)
+    # print(model)
     
     # <1>
     if gpu_num > 1:
@@ -162,7 +164,7 @@ if __name__ == '__main__':
     
     #gen class label txt by liu
     
-    # if not args.genclasslabeltxt:
+    # if args.genclasslabeltxt:
     #     class_label_dict={}
     #     for scan_idx in all_scans_in_dict.keys():
     #         class_labels=instance_labels_of_context(all_scans_in_dict[scan_idx].three_d_objects,args.max_test_objects,class_to_idx)

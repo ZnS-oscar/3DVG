@@ -115,8 +115,9 @@ def parse_arguments(notebook_options=None):
     #
     #Feat bank tryout by liu
     #
-    parser.add_argument('--genclasslabeltxt', type=str2bool, default=True)
+    parser.add_argument('--genclasslabeltxt', type=str2bool, default=False)
     parser.add_argument('--feat-bank',type=str,default="")
+    parser.add_argument('--pc-bank',type=str,default="")
 
 
     # Parse args
