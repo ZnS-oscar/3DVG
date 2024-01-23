@@ -10,7 +10,8 @@ import os.path as osp
 import torch.nn as nn
 from torch import optim
 from termcolor import colored
-
+sys.path.append('/data1/lhx/3DVG')
+print(sys.path)
 from referit3d.in_out.pt_datasets.utils import instance_labels_of_context
 from referit3d.in_out.arguments import parse_arguments
 from referit3d.in_out.neural_net_oriented import load_scan_related_data, load_referential_data
